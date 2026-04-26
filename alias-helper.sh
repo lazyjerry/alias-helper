@@ -22,6 +22,13 @@ confirm_yes() {
   [[ "$answer" == "y" || "$answer" == "Y" ]]
 }
 
+confirm_default_yes() {
+  local prompt="$1"
+  local answer
+  read -r -p "$prompt" answer
+  [[ -z "$answer" || "$answer" == "y" || "$answer" == "Y" ]]
+}
+
 expand_path() {
   local path="$1"
   if [[ "$path" == ~* ]]; then
@@ -393,19 +400,61 @@ modify_alias() {
 
   print_aliases || return
 
-  local index name command escaped alias_line
+  local index old_name new_name new_command escaped alias_line
   read -r -p '選擇要修改的編號: ' index
   if [[ ! "$index" =~ ^[0-9]+$ ]] || (( index < 1 || index > ${#ALIAS_NAMES[@]} )); then
     printf '編號無效。\n'
     return
   fi
 
-  name="${ALIAS_NAMES[$((index - 1))]}"
-  read -r -p "輸入新的指令內容（${name}）: " command
-  
-  # 修改時驗證：命令不為空、內建指令衝突、不是自我呼叫
-  # 不驗證命令是否存在（允許指向不存在或計畫中的命令）
-  validate_alias_basic "$name" "$command" || return
+  old_name="${ALIAS_NAMES[$((index - 1))]}"
+
+  # 修改 alias 名稱（留空保持不變）
+  read -r -p "新的 alias 名稱（留空保持 ${old_name} 不變）: " new_name
+  if [[ -z "$new_name" ]]; then
+    new_name="$old_name"
+  elif [[ ! "$new_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    printf '名稱格式錯誤，只允許英數、底線、點、減號。\n'
+    return
+  elif [[ "$new_name" != "$old_name" ]]; then
+    # 新名稱不可與現有 alias 衝突
+    local j
+    for (( j=0; j<${#ALIAS_NAMES[@]}; j++ )); do
+      if [[ "${ALIAS_NAMES[$j]}" == "$new_name" ]]; then
+        printf '錯誤：alias %s 已存在。\n' "$new_name"
+        return
+      fi
+    done
+    warn_if_special_alias_name "$new_name" || return
+  fi
+
+  # 修改 alias 指令內容（留空保持不變）
+  local old_command="${ALIAS_VALUES[$((index - 1))]}"
+  read -r -p "新的指令內容（留空保持不變）: " new_command
+  if [[ -z "$new_command" ]]; then
+    new_command="$old_command"
+  else
+    # 只驗證基本規則，不檢查命令是否存在
+    validate_alias_basic "$new_name" "$new_command" || return
+  fi
+
+  # 列出變更摘要供確認
+  printf '\n即將套用以下變更：\n'
+  if [[ "$new_name" != "$old_name" ]]; then
+    printf "  名稱：${GREEN}%s${NC} → ${GREEN}%s${NC}\n" "$old_name" "$new_name"
+  else
+    printf "  名稱：${GREEN}%s${NC}（不變）\n" "$old_name"
+  fi
+  if [[ "$new_command" != "$old_command" ]]; then
+    printf "  內容：${CYAN}%s${NC} → ${CYAN}%s${NC}\n" "$old_command" "$new_command"
+  else
+    printf "  內容：${CYAN}%s${NC}（不變）\n" "$old_command"
+  fi
+  printf '\n'
+  if ! confirm_default_yes '確認套用？(Y/n): '; then
+    printf '已取消操作。\n'
+    return
+  fi
 
   local backup_file
   backup_file="$(mktemp)"
@@ -417,11 +466,18 @@ modify_alias() {
     return
   fi
 
-  escaped="$(escape_single_quotes "$command")"
-  alias_line="alias ${name}='${escaped}'"
+  escaped="$(escape_single_quotes "$new_command")"
+  alias_line="alias ${new_name}='${escaped}'"
 
-  replace_alias_by_name "$name" "$alias_line"
-  printf '已修改 alias：%s\n' "$name"
+  if [[ "$new_name" != "$old_name" ]]; then
+    # 名稱改變：先刪除舊 alias，再新增新 alias
+    delete_alias_by_name "$old_name"
+    printf '%s\n' "$alias_line" >> "$target_file"
+  else
+    replace_alias_by_name "$old_name" "$alias_line"
+  fi
+
+  printf '已修改 alias：%s\n' "$new_name"
   if ! reload_target_file; then
     cp "$backup_file" "$target_file"
     printf '已還原變更，請檢查檔案語法後再重試。\n'
@@ -433,7 +489,7 @@ modify_alias() {
   if confirm_yes '是否添加或更新註解？(y/N): '; then
     local comment
     read -r -p '輸入註解內容（留空則移除）：' comment
-    add_alias_comment "$name" "$comment"
+    add_alias_comment "$new_name" "$comment"
     if [[ -n "$comment" ]]; then
       printf '已添加註解。\n'
     else
@@ -485,63 +541,23 @@ remove_alias() {
   rm -f "$backup_file"
 }
 
-apply_source_manually() {
-  ensure_target_file
-  [[ -f "$target_file" ]] || return
-
-  local base_name
-  base_name="$(basename "$target_file")"
-
-  if [[ "$base_name" == ".zshrc" ]] || [[ "$target_file" == *.zsh ]]; then
-    # 先驗證語法
-    if ! zsh -n "$target_file" >/dev/null 2>&1; then
-      printf '❌ 語法檢查失敗，無法載入。\n'
-      printf '請執行以下命令檢查語法：\n'
-      printf '  \033[36mzsh -n %s\033[0m\n' "$target_file"
-      return
-    fi
-
-    printf '✓ 語法檢查通過\n'
-    printf '\n請在你的終端執行以下命令以載入變更：\n'
-    printf '  \033[36msource %s\033[0m\n\n' "$target_file"
-    return
-  fi
-
-  if [[ "$base_name" == ".bashrc" ]] || [[ "$base_name" == ".bash_profile" ]] || [[ "$target_file" == *.bash ]]; then
-    # 先驗證語法
-    if ! bash -n "$target_file" >/dev/null 2>&1; then
-      printf '❌ 語法檢查失敗，無法載入。\n'
-      printf '請執行以下命令檢查語法：\n'
-      printf '  \033[36mbash -n %s\033[0m\n' "$target_file"
-      return
-    fi
-
-    printf '✓ 語法檢查通過\n'
-    printf '\n請在你的終端執行以下命令以載入變更：\n'
-    printf '  \033[36msource %s\033[0m\n\n' "$target_file"
-    return
-  fi
-
-  printf '⚠️  無法自動檢測檔案類型\n'
-  printf '請手動執行以下命令：\n'
-  printf '  \033[36msource %s\033[0m\n\n' "$target_file"
-}
-
 show_menu() {
-  printf '\nAlias 指令精靈 v%s\n' "$VERSION"
-  printf '目前目標檔案：%s\n' "$target_file"
-  printf '1) 列出 alias\n'
-  printf '2) 新增 alias\n'
-  printf '3) 修改既有 alias\n'
-  printf '4) 刪除 alias\n'
-  printf '5) 重新載入設定檔\n'
-  printf '6) 離開\n'
+  printf "\n${YELLOW}Alias 指令精靈 v%s${NC}\n" "$VERSION"
+  printf "${GRAY}目前目標檔案：%s${NC}\n" "$target_file"
+  printf "${GRAY}────────────────────────────${NC}\n"
+  printf "  ${GREEN}1)${NC} 列出 alias\n"
+  printf "  ${GREEN}2)${NC} 新增 alias\n"
+  printf "  ${GREEN}3)${NC} 修改既有 alias\n"
+  printf "  ${GREEN}4)${NC} 刪除 alias\n"
+  printf "  ${GREEN}5)${NC} 離開\n"
+  printf "${GRAY}────────────────────────────${NC}\n"
+  printf "${GRAY}提示：變更後請執行 ${NC}${CYAN}source %s${NC}\n" "$target_file"
 }
 
 main() {
   while true; do
     show_menu
-    read -r -p '請選擇操作（1-6）: ' choice
+    read -r -p '請選擇操作（1-5）: ' choice
 
     if [[ -z "$choice" ]]; then
       printf '已離開。\n'
@@ -569,18 +585,6 @@ main() {
         printf '執行動作：刪除 alias\n'
         sleep 0.4
         remove_alias
-        ;;
-      5)
-        printf '執行動作：重新載入設定檔\n'
-        sleep 0.4
-        apply_source_manually
-        ;;
-      6)
-        printf '已離開。\n'
-        break
-        ;;
-      *)
-        printf '無效選項，請輸入 1-6。\n'
         ;;
       5)
         printf '已離開。\n'
