@@ -352,7 +352,12 @@ modify_alias() {
 
   name="${ALIAS_NAMES[$((index - 1))]}"
   read -r -p "輸入新的指令內容（${name}）: " command
-  validate_alias_command "$name" "$command" || return
+  
+  # 修改時只檢查命令不為空，不驗證命令是否存在
+  if [[ -z "$command" ]]; then
+    printf '指令內容不可為空。\n'
+    return
+  fi
 
   local backup_file
   backup_file="$(mktemp)"
