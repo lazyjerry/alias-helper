@@ -2,7 +2,7 @@
 
 set -u
 
-VERSION="1.0.2"
+VERSION="1.0.3"
 target_file="$HOME/.zshrc"
 
 ALIAS_NAMES=()
@@ -353,11 +353,8 @@ modify_alias() {
   name="${ALIAS_NAMES[$((index - 1))]}"
   read -r -p "輸入新的指令內容（${name}）: " command
   
-  # 修改時只檢查命令不為空，不驗證命令是否存在
-  if [[ -z "$command" ]]; then
-    printf '指令內容不可為空。\n'
-    return
-  fi
+  # 修改時進行完整驗證：檢查命令不為空、內建指令衝突、命令存在性
+  validate_alias_command "$name" "$command" || return
 
   local backup_file
   backup_file="$(mktemp)"
