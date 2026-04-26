@@ -2,7 +2,7 @@
 
 set -u
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 target_file="$HOME/.zshrc"
 
 ALIAS_NAMES=()
@@ -264,7 +264,13 @@ add_or_update_alias() {
 
   local backup_file
   backup_file="$(mktemp)"
-  cp "$target_file" "$backup_file"
+  if cp "$target_file" "$backup_file"; then
+    printf '已建立備份：%s\n' "$backup_file"
+  else
+    printf '建立備份失敗，已取消操作。\n'
+    rm -f "$backup_file"
+    return
+  fi
 
   escaped="$(escape_single_quotes "$command")"
   alias_line="alias ${name}='${escaped}'"
@@ -300,7 +306,13 @@ modify_alias() {
 
   local backup_file
   backup_file="$(mktemp)"
-  cp "$target_file" "$backup_file"
+  if cp "$target_file" "$backup_file"; then
+    printf '已建立備份：%s\n' "$backup_file"
+  else
+    printf '建立備份失敗，已取消操作。\n'
+    rm -f "$backup_file"
+    return
+  fi
 
   escaped="$(escape_single_quotes "$command")"
   alias_line="alias ${name}='${escaped}'"
@@ -338,7 +350,13 @@ remove_alias() {
 
   local backup_file
   backup_file="$(mktemp)"
-  cp "$target_file" "$backup_file"
+  if cp "$target_file" "$backup_file"; then
+    printf '已建立備份：%s\n' "$backup_file"
+  else
+    printf '建立備份失敗，已取消操作。\n'
+    rm -f "$backup_file"
+    return
+  fi
 
   delete_alias_by_name "$name"
   printf '已刪除 alias：%s\n' "$name"
