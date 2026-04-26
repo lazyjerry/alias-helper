@@ -485,6 +485,48 @@ remove_alias() {
   rm -f "$backup_file"
 }
 
+apply_source_manually() {
+  ensure_target_file
+  [[ -f "$target_file" ]] || return
+
+  local base_name
+  base_name="$(basename "$target_file")"
+
+  if [[ "$base_name" == ".zshrc" ]] || [[ "$target_file" == *.zsh ]]; then
+    # 先驗證語法
+    if ! zsh -n "$target_file" >/dev/null 2>&1; then
+      printf '❌ 語法檢查失敗，無法載入。\n'
+      printf '請執行以下命令檢查語法：\n'
+      printf '  \033[36mzsh -n %s\033[0m\n' "$target_file"
+      return
+    fi
+
+    printf '✓ 語法檢查通過\n'
+    printf '\n請在你的終端執行以下命令以載入變更：\n'
+    printf '  \033[36msource %s\033[0m\n\n' "$target_file"
+    return
+  fi
+
+  if [[ "$base_name" == ".bashrc" ]] || [[ "$base_name" == ".bash_profile" ]] || [[ "$target_file" == *.bash ]]; then
+    # 先驗證語法
+    if ! bash -n "$target_file" >/dev/null 2>&1; then
+      printf '❌ 語法檢查失敗，無法載入。\n'
+      printf '請執行以下命令檢查語法：\n'
+      printf '  \033[36mbash -n %s\033[0m\n' "$target_file"
+      return
+    fi
+
+    printf '✓ 語法檢查通過\n'
+    printf '\n請在你的終端執行以下命令以載入變更：\n'
+    printf '  \033[36msource %s\033[0m\n\n' "$target_file"
+    return
+  fi
+
+  printf '⚠️  無法自動檢測檔案類型\n'
+  printf '請手動執行以下命令：\n'
+  printf '  \033[36msource %s\033[0m\n\n' "$target_file"
+}
+
 show_menu() {
   printf '\nAlias 指令精靈 v%s\n' "$VERSION"
   printf '目前目標檔案：%s\n' "$target_file"
@@ -492,13 +534,14 @@ show_menu() {
   printf '2) 新增 alias\n'
   printf '3) 修改既有 alias\n'
   printf '4) 刪除 alias\n'
-  printf '5) 離開\n'
+  printf '5) 重新載入設定檔\n'
+  printf '6) 離開\n'
 }
 
 main() {
   while true; do
     show_menu
-    read -r -p '請選擇操作（1-5）: ' choice
+    read -r -p '請選擇操作（1-6）: ' choice
 
     if [[ -z "$choice" ]]; then
       printf '已離開。\n'
@@ -526,6 +569,18 @@ main() {
         printf '執行動作：刪除 alias\n'
         sleep 0.4
         remove_alias
+        ;;
+      5)
+        printf '執行動作：重新載入設定檔\n'
+        sleep 0.4
+        apply_source_manually
+        ;;
+      6)
+        printf '已離開。\n'
+        break
+        ;;
+      *)
+        printf '無效選項，請輸入 1-6。\n'
         ;;
       5)
         printf '已離開。\n'
