@@ -15,8 +15,8 @@
 ## 使用方式
 
 ```bash
-chmod +x alias-wizard.sh
-./alias-wizard.sh
+chmod +x alias-helper.sh
+./alias-helper.sh
 ```
 
 ## 行為說明
@@ -33,4 +33,9 @@ chmod +x alias-wizard.sh
 3. 修改既有 alias
 4. 刪除 alias
 5. 離開
-New content line
+
+## 互動規則
+
+- 在主選單直接按 Enter 會離開程式
+- 選擇任一動作後，會先顯示執行動作並等待 0.4 秒再執行
+# alias-helper
