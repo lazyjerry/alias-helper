@@ -282,6 +282,44 @@ validate_alias_command() {
   return 0
 }
 
+validate_alias_basic() {
+  local alias_name="$1"
+  local command="$2"
+  local head base_name
+
+  # 只驗證：1) 命令不為空 2) 不是自我呼叫 3) 內建指令衝突
+  # 不驗證命令是否存在
+
+  if [[ -z "$command" ]]; then
+    printf '指令內容不可為空。\n'
+    return 1
+  fi
+
+  head="${command%%[[:space:]]*}"
+  if [[ -z "$head" ]]; then
+    printf '指令內容不可為空。\n'
+    return 1
+  fi
+
+  if [[ "$head" == "$alias_name" ]]; then
+    printf '偵測到 alias 可能自我呼叫（%s）。\n' "$alias_name"
+    return 1
+  fi
+
+  # 檢查內建指令衝突
+  case "$head" in
+    test|\[|\[\]|alias|unalias|source|cd|pwd|exit)
+      printf '警告：%s 可能與 shell 內建指令衝突。\n' "$head"
+      if ! confirm_yes '仍要繼續嗎？(y/N): '; then
+        printf '已取消操作。\n'
+        return 1
+      fi
+      ;;
+  esac
+
+  return 0
+}
+
 add_or_update_alias() {
   ensure_target_file
   [[ -f "$target_file" ]] || return
@@ -365,12 +403,9 @@ modify_alias() {
   name="${ALIAS_NAMES[$((index - 1))]}"
   read -r -p "輸入新的指令內容（${name}）: " command
   
-  # 修改時只檢查命令不為空，不進行其他驗證
-  # 用戶應有自由度修改為任意內容
-  if [[ -z "$command" ]]; then
-    printf '指令內容不可為空。\n'
-    return
-  fi
+  # 修改時驗證：命令不為空、內建指令衝突、不是自我呼叫
+  # 不驗證命令是否存在（允許指向不存在或計畫中的命令）
+  validate_alias_basic "$name" "$command" || return
 
   local backup_file
   backup_file="$(mktemp)"
