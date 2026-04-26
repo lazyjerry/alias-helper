@@ -90,6 +90,39 @@ escape_single_quotes() {
   printf "%s" "${raw//\'/\'\\\'\'}"
 }
 
+add_alias_comment() {
+  local name="$1"
+  local comment="$2"
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  awk -v n="$name" -v comment="$comment" '
+    BEGIN {
+      updated = 0
+      pattern = "^[[:space:]]*alias[[:space:]]+" n "="
+    }
+    {
+      if (!updated && $0 ~ pattern) {
+        # 移除既有的註解（如果有）
+        gsub(/[[:space:]]*#.*$/, "", $0)
+        # 移除尾部空格
+        gsub(/[[:space:]]+$/, "", $0)
+        # 添加新註解（保證同一行）
+        if (comment != "") {
+          print $0 "  # " comment
+        } else {
+          print $0
+        }
+        updated = 1
+        next
+      }
+      print
+    }
+  ' "$target_file" > "$tmp_file"
+
+  mv "$tmp_file" "$target_file"
+}
+
 replace_alias_by_name() {
   local name="$1"
   local new_line="$2"
@@ -291,6 +324,16 @@ add_or_update_alias() {
     return
   fi
 
+  # 詢問是否添加註解
+  if confirm_yes '是否添加註解？(y/N): '; then
+    local comment
+    read -r -p '輸入註解內容：' comment
+    if [[ -n "$comment" ]]; then
+      add_alias_comment "$name" "$comment"
+      printf '已添加註解。\n'
+    fi
+  fi
+
   rm -f "$backup_file"
 }
 
@@ -331,6 +374,18 @@ modify_alias() {
     printf '已還原變更，請檢查檔案語法後再重試。\n'
     rm -f "$backup_file"
     return
+  fi
+
+  # 詢問是否添加或更新註解
+  if confirm_yes '是否添加或更新註解？(y/N): '; then
+    local comment
+    read -r -p '輸入註解內容（留空則移除）：' comment
+    add_alias_comment "$name" "$comment"
+    if [[ -n "$comment" ]]; then
+      printf '已添加註解。\n'
+    else
+      printf '已移除註解。\n'
+    fi
   fi
 
   rm -f "$backup_file"
