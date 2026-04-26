@@ -136,37 +136,46 @@ delete_alias_by_name() {
 
 reload_target_file() {
   local base_name
-  local rc=1
   base_name="$(basename "$target_file")"
 
+  # 先做語法檢查，避免寫入後造成 RC 檔案損壞
   if [[ "$base_name" == ".zshrc" ]] || [[ "$target_file" == *.zsh ]]; then
-    if zsh -c "source \"$target_file\""; then
-      rc=0
-      printf '已用 zsh 重新載入：%s\n' "$target_file"
-    else
-      printf '重新載入失敗（zsh）：%s\n' "$target_file"
+    zsh -n "$target_file" >/dev/null 2>&1 || {
+      printf '重新載入失敗（語法錯誤）：%s\n' "$target_file"
+      return 1
+    }
+
+    # 僅在「本腳本被 source 進目前 shell」時，才能直接影響使用者當前 session
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]] && source "$target_file"; then
+      printf '已在目前 shell 套用：%s\n' "$target_file"
+      return 0
     fi
-    return "$rc"
+
+    printf '\n✓ 已新增\n'
+    printf '\n無法直接套用到你目前的 shell，請手動執行：\n'
+    printf '  \033[36m%s\033[0m\n\n' "source $target_file"
+    return 0
   fi
 
   if [[ "$base_name" == ".bashrc" ]] || [[ "$base_name" == ".bash_profile" ]] || [[ "$target_file" == *.bash ]]; then
-    if bash -c "source \"$target_file\""; then
-      rc=0
-      printf '已用 bash 重新載入：%s\n' "$target_file"
-    else
-      printf '重新載入失敗（bash）：%s\n' "$target_file"
+    bash -n "$target_file" >/dev/null 2>&1 || {
+      printf '重新載入失敗（語法錯誤）：%s\n' "$target_file"
+      return 1
+    }
+
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]] && source "$target_file"; then
+      printf '已在目前 shell 套用：%s\n' "$target_file"
+      return 0
     fi
-    return "$rc"
+
+    printf '\n✓ 已新增\n'
+    printf '\n無法直接套用到你目前的 shell，請手動執行：\n'
+    printf '  \033[36m%s\033[0m\n\n' "source $target_file"
+    return 0
   fi
 
-  if source "$target_file"; then
-    rc=0
-    printf '已重新載入：%s\n' "$target_file"
-  else
-    printf '重新載入失敗：%s\n' "$target_file"
-  fi
-
-  return "$rc"
+  printf '✓ 已新增至設定檔\n'
+  return 0
 }
 
 warn_if_special_alias_name() {
