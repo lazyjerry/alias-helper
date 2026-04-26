@@ -2,11 +2,18 @@
 
 set -u
 
-VERSION="1.0.1"
+VERSION="1.0.2"
 target_file="$HOME/.zshrc"
 
 ALIAS_NAMES=()
 ALIAS_VALUES=()
+
+# 顏色定義
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+GRAY='\033[0;90m'
+NC='\033[0m' # No Color
 
 confirm_yes() {
   local prompt="$1"
@@ -73,7 +80,7 @@ print_aliases() {
   printf '目前 alias（檔案：%s）：\n' "$target_file"
   local i
   for (( i=0; i<${#ALIAS_NAMES[@]}; i++ )); do
-    printf '%d) %s -> %s\n' "$((i + 1))" "${ALIAS_NAMES[$i]}" "${ALIAS_VALUES[$i]}"
+    printf "${GRAY}%d)${NC} ${GREEN}%s${NC} ${GRAY}→${NC} ${CYAN}%s${NC}\n" "$((i + 1))" "${ALIAS_NAMES[$i]}" "${ALIAS_VALUES[$i]}"
   done
   return 0
 }
