@@ -297,6 +297,17 @@ add_or_update_alias() {
     return
   fi
 
+  # 檢查 alias 是否已存在
+  load_aliases
+  local i
+  for (( i=0; i<${#ALIAS_NAMES[@]}; i++ )); do
+    if [[ "${ALIAS_NAMES[$i]}" == "$name" ]]; then
+      printf '錯誤：alias %s 已存在。\n' "$name"
+      printf '請使用選項 3 來修改此 alias。\n'
+      return
+    fi
+  done
+
   warn_if_special_alias_name "$name" || return
 
   read -r -p '輸入 alias 指令內容（例如 ls -lah）: ' command
@@ -315,8 +326,9 @@ add_or_update_alias() {
   escaped="$(escape_single_quotes "$command")"
   alias_line="alias ${name}='${escaped}'"
 
-  replace_alias_by_name "$name" "$alias_line"
-  printf '已新增或更新 alias：%s\n' "$name"
+  # 只在檔案末尾新增，不進行替換
+  printf '%s\n' "$alias_line" >> "$target_file"
+  printf '已新增 alias：%s\n' "$name"
   if ! reload_target_file; then
     cp "$backup_file" "$target_file"
     printf '已還原變更，請檢查檔案語法後再重試。\n'
@@ -438,7 +450,7 @@ show_menu() {
   printf '\nAlias 指令精靈 v%s\n' "$VERSION"
   printf '目前目標檔案：%s\n' "$target_file"
   printf '1) 列出 alias\n'
-  printf '2) 新增或更新 alias\n'
+  printf '2) 新增 alias\n'
   printf '3) 修改既有 alias\n'
   printf '4) 刪除 alias\n'
   printf '5) 離開\n'
@@ -462,7 +474,7 @@ main() {
         print_aliases
         ;;
       2)
-        printf '執行動作：新增或更新 alias\n'
+        printf '執行動作：新增 alias\n'
         sleep 0.4
         add_or_update_alias
         ;;
